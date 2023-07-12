@@ -1,2 +1,4 @@
 pytest_theory/tests/.pytest_cache
 pytest_theory/tests/data
+.idea/
+*.pytest_cache*
