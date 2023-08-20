@@ -1,0 +1,63 @@
+version: '3.0'
+
+services:
+  db:
+    image: db   # postgresql
+    container_name: nginx_database
+    environment:
+      POSTGRES_DB: nginx_app
+      POSTGRES_USER: nginx_app
+      POSTGRES_PASSWORD: nginx_app
+    volumes:
+      - backend_nginx:/var/lib/postgresql/data
+    networks:
+      - backend_nginx
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready", "-U", "nginx_app"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+
+  backend:
+    image: backend
+    container_name: backend
+    env_file:
+      - ./backend/.env
+    networks:
+      - backend_nginx
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "localhost:8000/test"]
+      interval: 3s
+      timeout: 9s
+      retries: 3
+
+  nginx:
+    image: nginx
+    container_name: frontend
+    ports:
+      - "80:80"
+    networks:
+      - backend_nginx
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+
+volumes:
+  backend_nginx:
+    external: true
+
+
+networks:
+  backend_nginx:
+    external: true
+
+
+
