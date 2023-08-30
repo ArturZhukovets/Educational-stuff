@@ -171,3 +171,135 @@ sudo systemctl start gunicorn.socket
 ### Troubleshooting Nginx + Full article
 https://www.digitalocean.com/community/tutorials/how-to-set-up-django-with-postgres-nginx-and-gunicorn-on-ubuntu-22-04#troubleshooting-nginx-and-gunicorn
 
+***
+
+# Настройка Docker + gunicorn + nginx
+
+### Docker + Docker-compose
+
+> *Все переменные окружения, используемые внутри контейнера прописаны в файле .env.dev*
+
+1. Создаём Dockerfile и необходимые зависимости (в этом примере создал requirements.txt)
+2. Создаём docker-compose.yml
+```yaml
+version: '3.8'
+
+services:
+  web:
+    build: ./
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./:/usr/src/app/
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./.env.dev
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:15
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=hello_django
+      - POSTGRES_PASSWORD=hello_django
+      - POSTGRES_DB=hello_django_dev
+    ports:
+      - "5432:5432"
+      # HEALTH CHECK CONDITION
+    healthcheck:
+#      test: ["CMD-SHELL", "pg_isready", "-U", "hello_django", "-h", "db"]
+      test: "pg_isready -h db -U hello_django"
+      interval: 5s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  postgres_data:
+```
+Тут необходимо обратить внимание на healthcheck. Если не указать юзера, то по дефолту подключаться к базе будет от root.  
+Из-за этого в логах будет спам ошибки доступа подключения через юзера root.  
+`test: ["CMD-SHELL", "pg_isready", "-U", "hello_django", "-h", "db"]` такая команда не валидна по синтаксису!
+`test: [ "CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}" ]` - пример валидной команды.
+
+3. Создаём `entrypoint.sh`. Файл, для запуска миграций при поднятии контейнера с приложением.
+```bash
+#!/bin/sh
+if [ "$DATABASE" = "postgres" ]
+then
+    echo "Waiting for postgres..."
+
+    while !nc -z $SQL_HOST $SQL_PORT; do
+      sleep 0.1
+    done
+
+    echo "PostgreSQL started"
+fi
+
+python manage.py flush --no-input
+python manage.py migrate
+
+exec "$@"
+```
+
+4. Добавить в Dockerfile команду запуска через entrypoint `ENTRYPOINT ["/usr/src/app/entrypoint.sh"]`.
+
+
+### Gunicorn
+
+1. Добавим docker-compose.prod.yml файл, в котором будет использоваться runcommand запускающая сервер через gunicorn. `command: gunicorn configuration.wsgi:application --bind 0.0.0.0:8000`  
+2. Добавить в requirements.txt `gunicorn==21.2.0`
+3. Пробуем запустить новый docker-compose `docker compose up -d --build`
+
+### Nginx
+0. Для дальнейшей конфигурации будет использоваться prod и dev конфигурация. А именно: docker-compose.prod / dev, Dockerfile.prod / Dockerfile, entrypoint.prod.sh / entrypoint.sh  
+Dockerfile.prod собирается теперь в два этапа (Builder + Final). В docker-compose.yml.prod указать, что сборка билдится именно из Dockerfile.prod
+
+1. Добавим сервис nginx в docker-compose.prod.yml
+```yaml
+nginx:
+  build: ./nginx
+  ports:
+    - 1337:80
+  depends_on:
+    - web
+```
+2. В конфиг nginx.conf добавляем конфиг для nginx сервера
+```nginx configuration pro
+upstream hello_django {
+    server web:8000;
+}
+
+server {
+
+    listen 80;
+
+    location / {
+        proxy_pass http://hello_django;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Host $host;
+        proxy_redirect off;
+    }
+
+}
+```
+3. Убираем проброску портов в docker-compose.prod.yml. Сейчас будет доступен 8000 порт Django прилажения только внутри докер сервисов. С локальной машины достучаться до этого порта уже не получится
+```yaml
+services:
+  web:
+    build:
+      context: ./
+      dockerfile: Dockerfile.prod
+    command: gunicorn configuration.wsgi:application --bind 0.0.0.0:8000
+    expose:
+      - 8000
+    env_file:
+      - ./.env.prod
+    depends_on:
+      db:
+        condition: service_healthy
+```
+
+### Static and Media files
