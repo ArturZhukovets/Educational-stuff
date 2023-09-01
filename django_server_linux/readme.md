@@ -302,4 +302,31 @@ services:
         condition: service_healthy
 ```
 
-### Static and Media files
+### Static
+
+1. Обновим settings.py:
+```python
+STATIC_ROOT = BASE_DIR / "staticfiles"
+```
+Теперь каждый запрос по адресу /static/ будет обслуживаться папкой `django_server_linux/staticfiles`
+2. В `docker-compose.prod.yml` Добавить `volume` со статикой
+```yaml
+  - static_volume:/home/app/web/staticfiles
+```
+> В моём билде в entrypoint.sh есть команда по собиранию статики каждый раз, когда поднимается образ. Это можно делать мануально.  Соответсвенно всякий раз статик файлы будут перезаписываться в моём случае.
+3. Далее необходимо обновить nginx конфиг, указав, куда отправлять все запросы на адрес `/static/`
+```nginx
+location /static/ {
+        alias /home/app/web/staticfiles/;
+    }
+```
+4. Последнее, начиная с Django 4.0. При попытке проверить prod сборку заходим на localhost:1337/admin должны подключиться дефолтные Django admin стили.  
+Если после ввода логина и пароля ругается на CSRF_TRUSTED_ORIGINS, необходимо добавить в settings.py url с которого обращаемся на сайт.
+```python
+import os
+# CSRF_TRUSTED_ORIGINS = ["http://localhost:1337", ]
+CSRF_TRUSTED_ORIGINS = os.environ.get("CSRF_TRUSTED_ORIGINS").split()
+```
+5. Запускаем финальный тест. Убеждаемся, что внутри проекта создалась папка staticfiles. Если нет - создаём её мануально. 
+
+### Media
