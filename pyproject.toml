@@ -13,6 +13,8 @@ requests = "^2.31.0"
 django = "^4.2.2"
 selenium = "^4.10.0"
 gunicorn = "^21.2.0"
+fastapi = "==0.55.1"
+uvicorn = "0.11.5"
 
 
 [build-system]
