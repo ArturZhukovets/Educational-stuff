@@ -15,6 +15,8 @@ selenium = "^4.10.0"
 gunicorn = "^21.2.0"
 fastapi = "==0.55.1"
 uvicorn = "0.11.5"
+sqlalchemy = "^2.0.20"
+psycopg2-binary = "^2.9.7"
 
 
 [build-system]

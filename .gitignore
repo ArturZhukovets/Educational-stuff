@@ -6,5 +6,5 @@ static
 *.pytest_cache*
 __pycache__
 
-
+*db_docker*
 .env*
