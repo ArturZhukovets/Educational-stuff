@@ -1,3 +1,4 @@
+import threading
 import time
 import random
 from db_buffer_service import get_buffer
@@ -31,9 +32,18 @@ def update_in_db() -> None:
             if not message:
                 break
             message.message = random.choice(messages)
-            buffer.update(message)
+            message.some_str_field = "Hello, world!"
+            print("#" * 40)
+            print(f"in cycle: {message}")
+            print("#" * 40)
+            buffer.update(message, update_fields=['message'])
     finally:
         buffer.release_buffer()
+    message.refresh_from_db()
+    print("\n\n")
+    print("--" * 40)
+    print(f"Final: {message}")
+    print("--" * 40)
     print("Records were updated")
 
 
@@ -42,7 +52,6 @@ def record_and_update():
         record = _create()
         record_to_db()
         _update(record)
-    debug = True
     # buffer.release_buffer()
 
 def _create():
@@ -67,8 +76,52 @@ def _update(record):
     print(f"After: {record.message}")
 
 
+def record_to_db_in_two_threads(log: TextLog):
+    buffer = get_buffer("logs")
+    log_pk = log.pk
+    thread_execution_func(log_pk)
+
+    # time.sleep(1)
+    for i in range(4):
+        log.message = "Actual message!!!"
+        log.save(update_fields=["message"])
+        # log.save()
+        print("#" * 40)
+        print("Log record inside [MAIN-Thread]:")
+        print(log)
+        print("#" * 40)
+
+        time.sleep(3)
+    log.refresh_from_db()
+    print("--" * 40)
+    print("FINAL STATE OF LOG RECORD: ")
+    print(log)
+    print("--" * 40)
+    print("\nEnd of the process...")
+
+def thread_execution_func(log_pk: int):
+
+    def _execution(log_pk: int):
+        # while True:
+        time.sleep(1)
+        log = TextLog.objects.get(pk=log_pk)
+        cur_timestamp = int(time.time())
+        log.some_str_field = cur_timestamp
+        log.some_choices_field = log.random_choice()
+        log.message = "will be overwritten"
+        log.save()
+        print("*" * 40)
+        print("Log record inside [CHILD-Thread]:")
+        print(log)
+        print("*" * 40)
+        # time.sleep(5)
+
+    thread = threading.Thread(target=_execution, args=[log_pk], daemon=True)
+    thread.start()
+
+# TODO Теория подвердилась. Объект необзодимо обновлять либо забирая его актуальную версию из базы либо обновляя
+#  только определённые филды.
+#  TODO попробовать завтра написать внутри Buffer логику, позволяющую обновлять только указанные филды.
 
 
 
-# add(inst1)
-# add(inst2)

@@ -1,16 +1,20 @@
+import logging
 import time
 from collections import defaultdict
 from multiprocessing import current_process
 
-from typing import ContextManager
+from typing import ContextManager, Optional
 
 from django.db import connections, OperationalError, InterfaceError
 from django.db.backends.base.base import BaseDatabaseWrapper
 from django.db.models import Model
 from django.db.models.base import ModelBase
 
+logger = logging.getLogger(__name__)
+
 ModelClassName: str
 InstancesList: list[Model]
+UpdateInstanceValue: tuple[Model, list[str]]
 
 class Buffer:
 
@@ -19,7 +23,7 @@ class Buffer:
 
     def __init__(self, unique_id: str, records_in_buffer: int = 1):
         self._unique_id = unique_id
-        self._storage: dict[ModelClassName, InstancesList | Model] = {}
+        self._storage: dict[ModelClassName, InstancesList or UpdateInstanceValue] = {}
         self.connection = self.__init_connection()
         self._BUFFER_SIZE_RECORDS = records_in_buffer
 
@@ -33,13 +37,13 @@ class Buffer:
         if len(self._storage[object_name]) >= self._BUFFER_SIZE_RECORDS:
             self._save(object_name, wait=False)
 
-    def update(self, instance: Model) -> None:
+    def update(self, instance: Model, update_fields: Optional[list[str]] = None) -> None:
         if not isinstance(instance, Model):
             raise TypeError(f"Specified `instance` argument should be a `Model` instance. Received - {type(instance)}")
         if not instance.pk:
             raise ValueError("Specified instance should have a `pk` if you want to update it.")
         object_name = instance.__class__.__name__ + "_" + str(instance.pk)
-        self._storage[object_name] = instance
+        self._storage[object_name] = (instance, update_fields)
         self._save(object_name, False)
 
     def release_buffer(self) -> None:
@@ -65,8 +69,9 @@ class Buffer:
 
     def __save_instance(self, instance_name: str) -> None:
         instance = self._storage[instance_name]
-        if isinstance(instance, Model):
-            instance.save()
+        if isinstance(instance, tuple) and len(instance_name.split("_")) == 2:
+            instance, update_fields = instance
+            instance.save(update_fields=update_fields)
         elif isinstance(instance, list):
             model = instance[0].__class__
             if not isinstance(model, ModelBase):
@@ -91,12 +96,13 @@ class Buffer:
                 connection = connections['default']
                 connection.ensure_connection()
                 if iteration > 1:
-                    print(f"Database connection established on the {iteration} attempt.")
+                    logger.debug(f"Database connection established on the {iteration} attempt.")
+                    logger.debug(f"All records inside the Buffer storage will be released")
                 return connection
 
             except (OperationalError, InterfaceError) as ex:
                 if wait:
-                    print("Lost connection with DB. Trying to establish connection...")
+                    logger.debug("Lost connection with DB. Trying to establish connection...")
                     time.sleep(10)
                 else:
                     raise ex
@@ -138,9 +144,11 @@ def db_buffer(func):
 
 @db_buffer
 def get_buffer(ui_id) -> Buffer:
+    """
+    This function is used to create a new or get an existing instance of a class Buffer.
+    Use it to perform database operations.
+    Use this function every time if needed to work with Buffer object.
+    Every Buffer instance should be use ONLY inside current process.
+    If you need to manipulate with Buffer in another process - use this function to create new Buffer instance!
+    """
     return Buffer(ui_id)
-
-
-# buffer_1 = get_buffer("Hello")
-# buffer_2 = get_buffer("By")
-# buffer_3 = get_buffer("Hello")

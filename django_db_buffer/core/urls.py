@@ -7,4 +7,5 @@ urlpatterns = [
     path("update/", views.update_record, name="update"),
     path("delete/", views.delete_records, name="delete"),
     path("mix/", views.both_update_and_create_records, name="mix"),
+    path("thread/", views.thread_manipulation_with_instance, name="thread"),
 ]
