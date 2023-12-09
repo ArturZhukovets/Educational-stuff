@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Home page</title>
+</head>
+    <body>
+    <div class="register">
+        <a href="{% url 'web:log_up' %}">Log up</a>
+    </div>
+
+    <div class="users">
+        {% if not list_users %}
+        <h1>No user specified</h1>
+        {% else %}
+        <ol>
+            {% for user in list_users %}
+            <li>{{ user }}</li>
+            {% endfor %}
+        </ol>
+        {% endif %}
+    </div>
+    </body>
+</html>
