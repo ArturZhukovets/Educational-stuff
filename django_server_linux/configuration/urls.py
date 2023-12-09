@@ -14,9 +14,22 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, re_path
+from django.conf import settings
+from django.views.static import serve
+
+from configuration import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('index', views.IndexView.as_view(), name="index")
 ]
+if settings.DEBUG:
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+else:
+    # In development, we should not use this approach. Use web server like nginx for it.
+    # But in some cases for debugging purposes we can use it.
+    # All static should exist in STATIC_ROOT folder, or it won't work.
+    urlpatterns += re_path(r'^static/(?P<path>.*)$', serve, {'document_root': settings.STATIC_ROOT}),
