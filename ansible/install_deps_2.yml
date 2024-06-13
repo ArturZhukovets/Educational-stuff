@@ -1,0 +1,18 @@
+---
+
+- hosts: all
+  become: true
+  tasks:
+    - name: Debug
+      debug:
+        msg: "Current ansible distribution is {{ ansible_distribution }}"
+
+    - name: install deps
+      package: # generic OS package manager for all systems (like ubuntu, centOS, etc)
+        # sudo apt install apache2 libapache2-mod-php
+        # install it like a variables passed through hosts file
+        name:
+          - "{{ apache_package }}"
+          - "{{ php_package }}"
+        state: latest
+        update_cache: yes  # sudo apt update
